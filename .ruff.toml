@@ -1,0 +1,10 @@
+target-version = "py311"
+
+[lint]
+extend-select = ["B", "C901"]
+
+[lint.mccabe]
+max-complexity = 15
+
+[lint.per-file-ignores]
+"tests/**/*.py" = ["E402", "B", "C901"]

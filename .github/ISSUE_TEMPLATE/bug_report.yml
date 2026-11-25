@@ -1,0 +1,27 @@
+name: Bug report
+description: Report an unexpected issue in a Pigbibi repository
+title: "[Bug]: "
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: Concise summary of the observable behavior and expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: Minimal command, configuration, or steps to reproduce the issue.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed credentials, tokens, and real account identifiers.
+          required: true
+        - label: This is not a security vulnerability (see SECURITY.md).
+          required: true

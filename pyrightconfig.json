@@ -1,0 +1,8 @@
+{
+  "include": [
+    "processor",
+    "tests/python"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic"
+}

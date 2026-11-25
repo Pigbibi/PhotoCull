@@ -1,0 +1,17 @@
+[Unit]
+Description=PhotoCull Execute Approved Trash & Google Photos Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=photocull
+WorkingDirectory=/opt/photocull
+EnvironmentFile=/opt/photocull/.env
+ExecStart=/opt/photocull/.venv/bin/python -m processor.cli execute
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=1200
+
+[Install]
+WantedBy=multi-user.target

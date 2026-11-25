@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PhotoCull Execution Poller Every 10 Minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

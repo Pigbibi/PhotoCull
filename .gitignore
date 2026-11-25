@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+.wrangler/
+.DS_Store
+data/
+
+# Governance anti-leak patterns
+docs/audits/
+docs/plans/
+docs/handoffs/
+docs/changes/
+docs/acceptance-policy.md
+.claude/
+.codex/
+.local/
+ops-notes/
+*.local.md
+*.internal.md

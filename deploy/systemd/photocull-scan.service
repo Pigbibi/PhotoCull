@@ -1,0 +1,17 @@
+[Unit]
+Description=PhotoCull OneDrive Scan & AI Burst Clustering
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=photocull
+WorkingDirectory=/opt/photocull
+EnvironmentFile=/opt/photocull/.env
+ExecStart=/opt/photocull/.venv/bin/python -m processor.cli scan
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

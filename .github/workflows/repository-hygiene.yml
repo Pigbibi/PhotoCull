@@ -1,0 +1,15 @@
+name: Repository hygiene
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    uses: Pigbibi/.github/.github/workflows/reusable-hygiene.yml@34a50bb02dc693fc03fd97507696536972fd5443
+    with:
+      strict: true
