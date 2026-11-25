@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import posixpath
 from typing import Any
 
 from processor.ai_cull import cull_cluster
@@ -13,6 +14,23 @@ from processor.cluster import (
 )
 from processor.config import Config
 from processor.state_db import StateDB
+
+
+def _is_path_within_source_dirs(onedrive_path: str, source_dirs: tuple[str, ...]) -> bool:
+    raw = (onedrive_path or "").strip()
+    if not raw or ".." in raw.split("/"):
+        return False
+    norm = posixpath.normpath("/" + raw.lstrip("/"))
+    for src in source_dirs:
+        src_clean = (src or "").strip()
+        if not src_clean or ".." in src_clean.split("/"):
+            continue
+        base = posixpath.normpath("/" + src_clean.lstrip("/"))
+        if base == "/":
+            return norm.startswith("/")
+        if norm == base or norm.startswith(base + "/"):
+            return True
+    return False
 
 
 def _default_album_from_taken_at(taken_at: str) -> str:
@@ -197,22 +215,37 @@ def execute_approved(
 
             if action == "trash":
                 if onedrive_status not in {"trashed", "staged"}:
-                    try:
-                        if cfg.onedrive_trash_mode == "staging_folder":
-                            onedrive.move_to_staging_folder(
-                                item_id, etag=etag, staging_dir=cfg.onedrive_staging_dir
-                            )
-                            onedrive_status = "staged"
-                        else:
-                            onedrive.move_to_recycle_bin(item_id, etag=etag)
-                            onedrive_status = "trashed"
-                        trashed_count += 1
-                        state_db.mark_item_status(item_id, "completed", cluster_id=cluster_id)
-                    except Exception as exc:
+                    scanned = state_db.get_scanned_item(item_id)
+                    remote_path = str(photo.get("onedrive_path") or "")
+                    if not scanned:
                         onedrive_status = "failed"
-                        error_message = str(exc)
+                        error_message = "Refused OneDrive delete: item was not discovered by local scanner"
                         any_failure = True
                         failed_count += 1
+                    elif not _is_path_within_source_dirs(scanned["path"], cfg.onedrive_source_dirs) or (
+                        remote_path and not _is_path_within_source_dirs(remote_path, cfg.onedrive_source_dirs)
+                    ):
+                        onedrive_status = "failed"
+                        error_message = "Refused OneDrive delete: path is outside configured ONEDRIVE_SOURCE_DIRS"
+                        any_failure = True
+                        failed_count += 1
+                    else:
+                        try:
+                            if cfg.onedrive_trash_mode == "staging_folder":
+                                onedrive.move_to_staging_folder(
+                                    item_id, etag=etag, staging_dir=cfg.onedrive_staging_dir
+                                )
+                                onedrive_status = "staged"
+                            else:
+                                onedrive.move_to_recycle_bin(item_id, etag=etag)
+                                onedrive_status = "trashed"
+                            trashed_count += 1
+                            state_db.mark_item_status(item_id, "completed", cluster_id=cluster_id)
+                        except Exception as exc:
+                            onedrive_status = "failed"
+                            error_message = str(exc)
+                            any_failure = True
+                            failed_count += 1
                 gphotos_status = "skipped"
             else:
                 onedrive_status = "kept"

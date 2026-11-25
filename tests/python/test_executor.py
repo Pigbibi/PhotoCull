@@ -92,6 +92,20 @@ def _make_cfg(db_path: Path, trash_mode: str = "recycle_bin") -> Config:
     )
 
 
+def _seed_scanned(db: StateDB, item_id: str, path: str, name: str) -> None:
+    db.upsert_scanned_item(
+        onedrive_item_id=item_id,
+        path=path,
+        name=name,
+        size_bytes=1024,
+        etag='"etag"',
+        sha256="",
+        taken_at="2026-10-03T14:22:00Z",
+        dhash="0000000000000000",
+        status="submitted",
+    )
+
+
 class ExecutorTests(unittest.TestCase):
     def test_gphotos_two_step_upload_and_idempotent_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -126,6 +140,7 @@ class ExecutorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "state.sqlite3"
             db = StateDB(db_path)
+            _seed_scanned(db, "OD_TRASH", "/Pictures/Camera Roll/trash.jpg", "trash.jpg")
             cfg = _make_cfg(db_path, trash_mode="recycle_bin")
             onedrive = FakeOneDrive()
             gp = FakeGooglePhotos()
@@ -139,6 +154,7 @@ class ExecutorTests(unittest.TestCase):
                                 "id": "ph_keep",
                                 "onedrive_item_id": "OD_KEEP",
                                 "onedrive_etag": '"etag-1"',
+                                "onedrive_path": "/Pictures/Camera Roll/keep.jpg",
                                 "filename": "keep.jpg",
                                 "recommended_action": "keep",
                                 "effective_action": "keep",
@@ -149,6 +165,7 @@ class ExecutorTests(unittest.TestCase):
                                 "id": "ph_trash",
                                 "onedrive_item_id": "OD_TRASH",
                                 "onedrive_etag": '"etag-2"',
+                                "onedrive_path": "/Pictures/Camera Roll/trash.jpg",
                                 "filename": "trash.jpg",
                                 "recommended_action": "trash",
                                 "effective_action": "trash",
@@ -177,6 +194,7 @@ class ExecutorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "state.sqlite3"
             db = StateDB(db_path)
+            _seed_scanned(db, "OD_TRASH_2", "/Pictures/Camera Roll/blur.jpg", "blur.jpg")
             cfg = _make_cfg(db_path, trash_mode="staging_folder")
             onedrive = FakeOneDrive()
             worker = FakeWorkerClient(
@@ -189,6 +207,7 @@ class ExecutorTests(unittest.TestCase):
                                 "id": "ph_trash",
                                 "onedrive_item_id": "OD_TRASH_2",
                                 "onedrive_etag": '"etag-9"',
+                                "onedrive_path": "/Pictures/Camera Roll/blur.jpg",
                                 "filename": "blur.jpg",
                                 "recommended_action": "trash",
                                 "effective_action": "trash",
@@ -204,6 +223,54 @@ class ExecutorTests(unittest.TestCase):
             self.assertEqual(summary["trashed_count"], 1)
             self.assertEqual(onedrive.staged, [("OD_TRASH_2", '"etag-9"', "/_PhotoCull_Trash")])
             self.assertEqual(worker.reported[0][1]["results"][0]["onedrive_status"], "staged")
+            db.close()
+
+    def test_refuses_delete_for_unknown_or_out_of_scope_items(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "state.sqlite3"
+            db = StateDB(db_path)
+            _seed_scanned(db, "OD_OUTSIDE", "/Documents/tax.jpg", "tax.jpg")
+            cfg = _make_cfg(db_path, trash_mode="recycle_bin")
+            onedrive = FakeOneDrive()
+            worker = FakeWorkerClient(
+                [
+                    {
+                        "id": "cl_guard",
+                        "album_name": "2026-10 旅拍精选",
+                        "photos": [
+                            {
+                                "id": "ph_unknown",
+                                "onedrive_item_id": "OD_UNSEEN",
+                                "onedrive_etag": '"etag-u"',
+                                "onedrive_path": "/Pictures/Camera Roll/unseen.jpg",
+                                "filename": "unseen.jpg",
+                                "recommended_action": "trash",
+                                "effective_action": "trash",
+                                "onedrive_status": "pending",
+                                "gphotos_status": "pending",
+                            },
+                            {
+                                "id": "ph_outside",
+                                "onedrive_item_id": "OD_OUTSIDE",
+                                "onedrive_etag": '"etag-o"',
+                                "onedrive_path": "/Documents/tax.jpg",
+                                "filename": "tax.jpg",
+                                "recommended_action": "trash",
+                                "effective_action": "trash",
+                                "onedrive_status": "pending",
+                                "gphotos_status": "pending",
+                            },
+                        ],
+                    }
+                ]
+            )
+
+            summary = execute_approved(cfg, db, onedrive, None, worker)
+            self.assertEqual(summary["trashed_count"], 0)
+            self.assertEqual(summary["failed_count"], 2)
+            self.assertEqual(onedrive.deleted, [])
+            self.assertEqual(onedrive.staged, [])
+            self.assertEqual(worker.reported[0][1]["status"], "partial_failed")
             db.close()
 
 
