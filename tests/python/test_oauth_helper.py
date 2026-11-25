@@ -89,15 +89,16 @@ class OAuthHelperTests(unittest.TestCase):
         self.assertEqual(token, "gp_rt_999")
         self.assertEqual(len(captured_urls), 1)
 
-    def test_exchange_gphotos_code_requires_refresh_token(self) -> None:
-        with self.assertRaises(OAuthHelperError):
+    def test_exchange_gphotos_code_requires_refresh_token_without_leaking_access_token(self) -> None:
+        with self.assertRaises(OAuthHelperError) as ctx:
             exchange_gphotos_code(
                 "gcid",
                 "gsec",
                 "code1",
                 "http://127.0.0.1:8765/callback",
-                http_post=lambda _u, _f: (200, {"access_token": "only_access"}),
+                http_post=lambda _u, _f: (200, {"access_token": "secret_access_tok_123"}),
             )
+        self.assertNotIn("secret_access_tok_123", str(ctx.exception))
 
     def test_upsert_env_values_preserves_existing_and_sets_0600(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

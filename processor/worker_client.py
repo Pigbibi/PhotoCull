@@ -31,7 +31,10 @@ class WorkerClient:
         content_type: str = "application/json",
     ) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
-        headers = {"Authorization": f"Bearer {self.processor_token}"}
+        headers = {
+            "Authorization": f"Bearer {self.processor_token}",
+            "User-Agent": "PhotoCull-Processor/1.0",
+        }
         payload = data
         if json_body is not None:
             payload = json.dumps(json_body).encode("utf-8")

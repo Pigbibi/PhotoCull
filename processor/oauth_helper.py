@@ -20,6 +20,18 @@ class OAuthHelperError(RuntimeError):
     pass
 
 
+def _safe_oauth_error_detail(data: dict[str, Any]) -> str:
+    err = str(data.get("error") or "").strip()
+    desc = str(data.get("error_description") or "").strip()
+    if err and desc:
+        return f"{err}: {desc}"
+    if err:
+        return err
+    if desc:
+        return desc
+    return "unexpected OAuth payload"
+
+
 def _default_form_post(url: str, form: dict[str, str], timeout: int = 30) -> tuple[int, dict[str, Any]]:
     data = urllib.parse.urlencode(form).encode("utf-8")
     req = urllib.request.Request(
@@ -65,7 +77,7 @@ def run_onedrive_device_auth(
         {"client_id": client_id, "scope": ONEDRIVE_SCOPES},
     )
     if status >= 400 or "device_code" not in dc:
-        raise OAuthHelperError(f"Failed to start Microsoft device auth: {dc}")
+        raise OAuthHelperError(f"Failed to start Microsoft device auth: {_safe_oauth_error_detail(dc)}")
 
     verify_uri = dc.get("verification_uri") or "https://microsoft.com/devicelogin"
     user_code = dc.get("user_code", "")
@@ -98,7 +110,9 @@ def run_onedrive_device_auth(
             continue
         if t_status < 400 and t_data.get("access_token") and not t_data.get("refresh_token"):
             raise OAuthHelperError("Token response did not include refresh_token (check offline_access scope)")
-        raise OAuthHelperError(f"Microsoft device auth failed ({err or t_status}): {t_data}")
+        raise OAuthHelperError(
+            f"Microsoft device auth failed ({err or t_status}): {_safe_oauth_error_detail(t_data)}"
+        )
 
     raise OAuthHelperError("Microsoft device code flow timed out before authorization completed")
 
@@ -146,8 +160,14 @@ def exchange_gphotos_code(
             "grant_type": "authorization_code",
         },
     )
-    if status >= 400 or not data.get("refresh_token"):
-        raise OAuthHelperError(f"Google OAuth code exchange failed ({status}): {data}")
+    if status >= 400:
+        raise OAuthHelperError(
+            f"Google OAuth code exchange failed ({status}): {_safe_oauth_error_detail(data)}"
+        )
+    if not data.get("refresh_token"):
+        raise OAuthHelperError(
+            "Google OAuth response did not include refresh_token (revoke prior grant or pass prompt=consent)"
+        )
     return str(data["refresh_token"])
 
 
@@ -252,9 +272,13 @@ def run_gphotos_auth(
 
 
 def upsert_env_values(env_path: Path, updates: dict[str, str]) -> None:
-    """Update or append KEY=VALUE pairs in a dotenv file and enforce 0600 permissions."""
+    """Update or append KEY=VALUE pairs atomically with mode 0600 from creation."""
     env_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.is_file() else []
+    if env_path.is_file():
+        os.chmod(env_path, 0o600)
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = []
     remaining = dict(updates)
     out_lines: list[str] = []
 
@@ -270,5 +294,15 @@ def upsert_env_values(env_path: Path, updates: dict[str, str]) -> None:
     for key, value in remaining.items():
         out_lines.append(f"{key}={value}")
 
-    env_path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
-    os.chmod(env_path, 0o600)
+    payload = "\n".join(out_lines) + "\n"
+    tmp_path = env_path.with_name(f".{env_path.name}.tmp.{os.getpid()}.{secrets.token_hex(4)}")
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+        os.replace(tmp_path, env_path)
+        os.chmod(env_path, 0o600)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise

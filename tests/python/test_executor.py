@@ -8,6 +8,7 @@ from processor.config import Config
 from processor.executor import execute_approved
 from processor.gphotos import GooglePhotosClient
 from processor.state_db import StateDB
+from processor.worker_client import WorkerClient
 
 
 class FakeOneDrive:
@@ -272,6 +273,32 @@ class ExecutorTests(unittest.TestCase):
             self.assertEqual(onedrive.staged, [])
             self.assertEqual(worker.reported[0][1]["status"], "partial_failed")
             db.close()
+
+    def test_worker_client_sets_explicit_user_agent_header(self) -> None:
+        from unittest.mock import patch
+
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"clusters":[]}'
+
+        captured_headers = {}
+
+        def fake_urlopen(req, timeout=30):
+            captured_headers.update({k.lower(): v for k, v in req.header_items()})
+            return FakeResp()
+
+        client = WorkerClient("https://photocull.example", "tok_123")
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            res = client.fetch_approved_clusters()
+        self.assertEqual(res, [])
+        self.assertEqual(captured_headers.get("authorization"), "Bearer tok_123")
+        self.assertEqual(captured_headers.get("user-agent"), "PhotoCull-Processor/1.0")
 
 
 if __name__ == "__main__":
