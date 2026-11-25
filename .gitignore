@@ -10,6 +10,7 @@ __pycache__/
 *.sqlite3
 *.sqlite-journal
 .wrangler/
+wrangler.local.jsonc
 .DS_Store
 data/
 
