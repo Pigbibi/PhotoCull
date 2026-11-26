@@ -12,6 +12,8 @@ ExecStart=/opt/photocull/.venv/bin/python -m processor.cli execute
 StandardOutput=journal
 StandardError=journal
 TimeoutStartSec=1200
+NoNewPrivileges=true
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
